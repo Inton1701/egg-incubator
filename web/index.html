@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Egg Incubator - Remote Monitor</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        .container { max-width: 480px; margin: 0 auto; padding: 16px; }
+        
+        .header {
+            background: rgba(255,255,255,0.95);
+            border-radius: 16px;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        }
+        .header h1 { font-size: 24px; color: #2c3e50; margin-bottom: 8px; }
+        .status-badge {
+            display: inline-block;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .status-badge.online { background: #27ae60; color: white; }
+        .status-badge.offline { background: #e74c3c; color: white; }
+        .status-badge.connecting { background: #f39c12; color: white; }
+        
+        .setup-card {
+            background: rgba(255,255,255,0.95);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        }
+        .setup-card h2 { font-size: 18px; color: #2c3e50; margin-bottom: 16px; }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; font-size: 13px; color: #666; margin-bottom: 6px; }
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        .form-group input:focus { outline: none; border-color: #667eea; }
+        
+        .btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, opacity 0.2s;
+        }
+        .btn:active { transform: scale(0.98); }
+        .btn-primary { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+        .btn-danger { background: #e74c3c; color: white; }
+        .btn-success { background: #27ae60; color: white; }
+        
+        .card {
+            background: rgba(255,255,255,0.95);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        }
+        
+        .sensor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .sensor-card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+        }
+        .sensor-label { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 1px; }
+        .sensor-value { font-size: 42px; font-weight: 700; margin: 8px 0; }
+        .sensor-value.normal { color: #27ae60; }
+        .sensor-value.warn { color: #f39c12; }
+        .sensor-value.danger { color: #e74c3c; }
+        .sensor-unit { font-size: 14px; color: #999; }
+        
+        .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .status-item .label { font-size: 13px; color: #666; }
+        .status-item .value { font-weight: 600; font-size: 13px; }
+        .status-item .value.on { color: #27ae60; }
+        .status-item .value.off { color: #95a5a6; }
+        
+        .control-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .control-btn {
+            padding: 16px;
+            border: none;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s;
+        }
+        .control-btn.on { background: #27ae60; color: white; }
+        .control-btn.off { background: #e0e0e0; color: #666; }
+        .control-btn .icon { font-size: 24px; }
+        
+        .last-seen {
+            text-align: center;
+            font-size: 12px;
+            color: rgba(255,255,255,0.8);
+            margin-top: 8px;
+        }
+        
+        .hidden { display: none !important; }
+        
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 1000;
+        }
+        .toast.show { opacity: 1; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🥚 Egg Incubator</h1>
+            <span class="status-badge connecting" id="connection-status">Connecting...</span>
+        </div>
+        
+        <!-- Setup Section (shown when not configured) -->
+        <div class="setup-card" id="setup-section">
+            <h2>🔧 Firebase Configuration</h2>
+            <div class="form-group">
+                <label>Database URL</label>
+                <input type="text" id="fb-url" placeholder="https://your-project-default-rtdb.firebaseio.com">
+            </div>
+            <div class="form-group">
+                <label>Device ID</label>
+                <input type="text" id="fb-device" placeholder="incubator1" value="incubator1">
+            </div>
+            <p style="font-size: 12px; color: #888; margin-bottom: 16px;">
+                Note: Your Firebase Realtime Database rules must allow public read/write for this to work without authentication.
+                For testing, set rules to: <code>".read": true, ".write": true</code>
+            </p>
+            <button class="btn btn-primary" onclick="saveConfig()">Connect to Firebase</button>
+        </div>
+        
+        <!-- Dashboard Section (shown when connected) -->
+        <div id="dashboard-section" class="hidden">
+            <!-- Sensors -->
+            <div class="card">
+                <div class="sensor-grid">
+                    <div class="sensor-card">
+                        <div class="sensor-label">Temperature</div>
+                        <div class="sensor-value normal" id="temp-value">--</div>
+                        <div class="sensor-unit">°C</div>
+                    </div>
+                    <div class="sensor-card">
+                        <div class="sensor-label">Humidity</div>
+                        <div class="sensor-value normal" id="hum-value">--</div>
+                        <div class="sensor-unit">%</div>
+                    </div>
+                </div>
+                
+                <div class="status-grid">
+                    <div class="status-item">
+                        <span class="label">Water Level</span>
+                        <span class="value" id="water-status">--</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Device IP</span>
+                        <span class="value" id="device-ip">--</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Controls -->
+            <div class="card">
+                <h3 style="font-size: 14px; color: #666; margin-bottom: 12px;">CONTROLS</h3>
+                <div class="control-grid">
+                    <button class="control-btn off" id="btn-heater" onclick="toggleControl('heaterBulb')">
+                        <span class="icon">💡</span>
+                        <span>Heater</span>
+                    </button>
+                    <button class="control-btn off" id="btn-fan" onclick="toggleControl('fan')">
+                        <span class="icon">🌀</span>
+                        <span>Fan</span>
+                    </button>
+                    <button class="control-btn off" id="btn-humidifier" onclick="toggleControl('humidifier')">
+                        <span class="icon">💨</span>
+                        <span>Humidifier</span>
+                    </button>
+                    <button class="control-btn off" id="btn-turner" onclick="toggleControl('eggTurner')">
+                        <span class="icon">🔄</span>
+                        <span>Egg Turner</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Auto Modes -->
+            <div class="card">
+                <h3 style="font-size: 14px; color: #666; margin-bottom: 12px;">AUTO MODES</h3>
+                <div class="control-grid">
+                    <button class="control-btn off" id="btn-auto-heater" onclick="toggleAuto('bulbAutoMode')">
+                        <span class="icon">🌡️</span>
+                        <span>Auto Heater</span>
+                    </button>
+                    <button class="control-btn off" id="btn-auto-humidity" onclick="toggleAuto('humidifierAutoMode')">
+                        <span class="icon">💧</span>
+                        <span>Auto Humidity</span>
+                    </button>
+                    <button class="control-btn off" id="btn-sched-fan" onclick="toggleSchedule('fanScheduleEnabled')">
+                        <span class="icon">⏰</span>
+                        <span>Fan Schedule</span>
+                    </button>
+                    <button class="control-btn off" id="btn-sched-turner" onclick="toggleSchedule('eggTurnerScheduleEnabled')">
+                        <span class="icon">📅</span>
+                        <span>Turner Schedule</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Turn Now Button -->
+            <button class="btn btn-success" onclick="turnNow()" style="margin-bottom: 16px;">🔄 Turn Eggs Now</button>
+            
+            <!-- Disconnect -->
+            <button class="btn btn-danger" onclick="disconnect()">Disconnect</button>
+        </div>
+        
+        <div class="last-seen" id="last-seen"></div>
+    </div>
+    
+    <div class="toast" id="toast"></div>
+    
+    <script>
+        let config = null;
+        let currentState = {};
+        let refreshInterval = null;
+        
+        // Load saved config
+        function loadConfig() {
+            const saved = localStorage.getItem('incubator_config');
+            if (saved) {
+                config = JSON.parse(saved);
+                document.getElementById('fb-url').value = config.url || '';
+                document.getElementById('fb-device').value = config.device || 'incubator1';
+                if (config.url) {
+                    connect();
+                }
+            }
+        }
+        
+        // Save config and connect
+        function saveConfig() {
+            let url = document.getElementById('fb-url').value.trim();
+            const device = document.getElementById('fb-device').value.trim() || 'incubator1';
+            
+            if (!url) {
+                toast('Please enter Database URL');
+                return;
+            }
+            
+            // Normalize URL - remove https:// if present and trailing slashes
+            url = url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+            
+            config = { url, device };
+            localStorage.setItem('incubator_config', JSON.stringify(config));
+            connect();
+        }
+        
+        // Connect to Firebase
+        async function connect() {
+            updateStatus('connecting', 'Connecting...');
+            
+            // Always show dashboard immediately so user can control
+            document.getElementById('setup-section').classList.add('hidden');
+            document.getElementById('dashboard-section').classList.remove('hidden');
+            startRefresh();
+            
+            try {
+                const response = await fetch(
+                    `https://${config.url}/devices/${config.device}/state.json`
+                );
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data) {
+                        updateStatus('online', 'Online');
+                        updateDashboard(data);
+                        toast('Connected to incubator!');
+                    } else {
+                        updateStatus('offline', 'Waiting for data...');
+                        toast('Connected - waiting for device data');
+                    }
+                } else {
+                    updateStatus('offline', 'Auth Error');
+                    toast('Check Firebase rules - need public access');
+                }
+            } catch (e) {
+                updateStatus('offline', 'Connection Failed');
+                toast('Failed to connect: ' + e.message);
+            }
+        }
+        
+        // Start auto refresh
+        function startRefresh() {
+            if (refreshInterval) clearInterval(refreshInterval);
+            refreshInterval = setInterval(fetchState, 3000);
+            fetchState();
+        }
+        
+        // Fetch current state
+        async function fetchState() {
+            if (!config) return;
+            
+            try {
+                const response = await fetch(
+                    `https://${config.url}/devices/${config.device}/state.json`
+                );
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data) {
+                        updateStatus('online', data.testMode ? 'Test Mode' : 'Online');
+                        updateDashboard(data);
+                    } else {
+                        updateStatus('offline', 'Waiting...');
+                        // Still allow controls even without data
+                    }
+                } else {
+                    updateStatus('offline', 'Auth Error');
+                }
+            } catch (e) {
+                updateStatus('offline', 'Connection Lost');
+            }
+        }
+        
+        // Update dashboard with state data
+        function updateDashboard(data) {
+            currentState = data || {};
+            
+            // Temperature
+            const tempEl = document.getElementById('temp-value');
+            if (data && data.tempC !== undefined && data.tempC > -900) {
+                tempEl.textContent = data.tempC.toFixed(1);
+                tempEl.className = 'sensor-value ' + 
+                    (data.tempC < 36 || data.tempC > 40 ? 'danger' : 
+                     data.tempC < 37 || data.tempC > 39 ? 'warn' : 'normal');
+            } else {
+                tempEl.textContent = '--';
+                tempEl.className = 'sensor-value';
+            }
+            
+            // Humidity
+            const humEl = document.getElementById('hum-value');
+            if (data && data.humidity !== undefined && data.humidity > -900) {
+                humEl.textContent = Math.round(data.humidity);
+                humEl.className = 'sensor-value ' + 
+                    (data.humidity < 50 || data.humidity > 75 ? 'danger' : 
+                     data.humidity < 55 || data.humidity > 70 ? 'warn' : 'normal');
+            } else {
+                humEl.textContent = '--';
+                humEl.className = 'sensor-value';
+            }
+            
+            // Water status
+            const waterEl = document.getElementById('water-status');
+            waterEl.textContent = (data && data.waterHigh) ? 'HIGH' : 'LOW';
+            waterEl.className = 'value ' + ((data && data.waterHigh) ? 'on' : 'off');
+            
+            // Device IP
+            document.getElementById('device-ip').textContent = (data && data.ip) ? data.ip : '--';
+            
+            // Control buttons (only update if data exists)
+            if (data) {
+                updateControlBtn('btn-heater', data.heaterBulb);
+                updateControlBtn('btn-fan', data.fan);
+                updateControlBtn('btn-humidifier', data.humidifier);
+                updateControlBtn('btn-turner', data.eggTurner);
+                
+                // Auto mode buttons
+                updateControlBtn('btn-auto-heater', data.bulbAutoMode);
+                updateControlBtn('btn-auto-humidity', data.humidifierAutoMode);
+                updateControlBtn('btn-sched-fan', data.fanScheduleEnabled);
+                updateControlBtn('btn-sched-turner', data.eggTurnerScheduleEnabled);
+            }
+            
+            // Last seen
+            if (data && data.lastSeen) {
+                const seconds = Math.floor((Date.now() - data.lastSeen) / 1000);
+                document.getElementById('last-seen').textContent = 
+                    `Last update: ${seconds < 10 ? 'just now' : seconds + 's ago'}`;
+            } else {
+                document.getElementById('last-seen').textContent = 'Waiting for device...';
+            }
+        }
+        
+        function updateControlBtn(id, isOn) {
+            const btn = document.getElementById(id);
+            btn.className = 'control-btn ' + (isOn ? 'on' : 'off');
+        }
+        
+        // Send command to Firebase
+        async function sendCommand(command) {
+            if (!config) return;
+            
+            command.cmdId = Date.now().toString();
+            
+            try {
+                await fetch(
+                    `https://${config.url}/devices/${config.device}/command.json`,
+                    {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(command)
+                    }
+                );
+                toast('Command sent!');
+                setTimeout(fetchState, 1000);
+            } catch (e) {
+                toast('Failed to send command');
+            }
+        }
+        
+        // Toggle control
+        function toggleControl(key) {
+            const newState = !currentState[key];
+            sendCommand({ [key]: newState });
+        }
+        
+        // Toggle auto mode
+        function toggleAuto(key) {
+            const newState = !currentState[key];
+            sendCommand({ [key]: newState });
+        }
+        
+        // Toggle schedule
+        function toggleSchedule(key) {
+            const newState = !currentState[key];
+            sendCommand({ [key]: newState });
+        }
+        
+        // Turn eggs now
+        function turnNow() {
+            sendCommand({ turnNow: true });
+        }
+        
+        // Disconnect
+        function disconnect() {
+            if (refreshInterval) clearInterval(refreshInterval);
+            localStorage.removeItem('incubator_config');
+            config = null;
+            document.getElementById('setup-section').classList.remove('hidden');
+            document.getElementById('dashboard-section').classList.add('hidden');
+            updateStatus('offline', 'Disconnected');
+            toast('Disconnected');
+        }
+        
+        // Update connection status
+        function updateStatus(status, text) {
+            const el = document.getElementById('connection-status');
+            el.className = 'status-badge ' + status;
+            el.textContent = text;
+        }
+        
+        // Toast notification
+        function toast(msg) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 2500);
+        }
+        
+        // Initialize
+        loadConfig();
+    </script>
+</body>
+</html>
